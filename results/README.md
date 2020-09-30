@@ -1,0 +1,16 @@
+|文件标识|描述|评分|
+|-|-|-|
+0914-1|第一次试水，仅根据rotorspeed的参数范围，将拥有范围外rotorspeed的数据视为异常|0.79530736
+0915-1|第二次试水，仅根据windspeed的参数范围，将拥有范围外windspeed的数据视为异常|未增加
+0915-2|第三次试水，根据windspeed和rotorspeed的参数范围，将拥有范围外rotorspeed和windspeed的数据视为异常|0.80059751
+0916-1|在0915-2的基础上，对每个风机的数据分别进行核密度估计，将每个风机概率最低的5%数据视作异常|未增加
+0916-2|不根据风机参数清洗，对每个风机的数据分别进行核密度估计，将每个风机概率最低的5%数据视作异常|未增加
+0922-1|根据风机参数清洗，对每个风机，使用统一参数进行grid_var清洗，rs_interval_n=10，pw_interval_n=20，k=1，clip_ratio_step=0.1|0.80525639774 
+0922-2|根据风机参数清洗，对每个风机，使用统一参数进行grid_var清洗，rs_interval_n=10，pw_interval_n=20，k=0.5，clip_ratio_step=0.1|0.80949535156 
+0922-3|根据风机参数清洗，对每个风机，使用统一参数进行grid_var清洗，rs_interval_n=10，pw_interval_n=20，k=0.2，clip_ratio_step=0.1|0.81263058
+0923-1|根据风机参数清洗，对每个风机，使用该风机特定的参数进行ew_grid_var清洗，每个风机用于grid_var清洗的参数见ew_grid_var_param.csv|0.81566951100
+0925-1|根据风机参数清洗，对每个风机，使用该风机特定的参数进行ed_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv（此次未调参）|0.81202082595
+0925-2|不进行一次清洗，对每个风机，使用该风机特定的参数进行ew_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv（此次未调参）|?
+0925-3|不进行一次清洗，对每个风机，使用该风机特定的参数进行ed_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv（此次未调参）|?
+0927-1|不进行一次清洗，对每个风机，首先将底部异常点去除，随后使用该风机特定的参数进行ed_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv|?
+0930-1|按照Data-Driven_Correction_Approach_to_Refine_Power_Cu复现，未调参|?
