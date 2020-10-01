@@ -13,4 +13,7 @@
 0925-2|不进行一次清洗，对每个风机，使用该风机特定的参数进行ew_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv（此次未调参）|?
 0925-3|不进行一次清洗，对每个风机，使用该风机特定的参数进行ed_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv（此次未调参）|?
 0927-1|不进行一次清洗，对每个风机，首先将底部异常点去除，随后使用该风机特定的参数进行ed_grid_var清洗，每个风机用于grid_var清洗的参数见ed_grid_var_param.csv|?
-0930-1|按照Data-Driven_Correction_Approach_to_Refine_Power_Cu复现，未调参|?
+0930-1|按照Data-Driven_Correction_Approach_to_Refine_Power_Cu复现，未调参|0.88814290181
+0930-2|按照Data-Driven_Correction_Approach_to_Refine_Power_Cu复现，加上去除各维度0以下、去除切入/切出风速外产生功率的点，未调参|0.88739047107
+1001-1|按照Data-Driven_Correction_Approach_to_Refine_Power_Cu复现，加上去除各维度0以下的点，未调参|0.88814290
+1001-2|在1001-2的基础上，调参，使6号风机在双流形中选取正确的流形|0.88823816

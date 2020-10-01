@@ -6,29 +6,64 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 DEBUG = False
-DEBUG_WIND_NUMBER = 1
+DEBUG_WIND_NUMBER = 6
 
+
+###################
+# Read raw dataset
+###################
 raw_df = pd.read_csv("./data/dataset.csv") # Load Dataset
 param_df = pd.read_csv("./data/parameters.csv", index_col="风机编号").T # Load turbine parameters
 raw_df["label"] = 0
+raw_df_index = raw_df.index
 
 
 ##############
 # Parameters
 ##############
-ws_interval_width = 0.5 #(m/s)
-pw_interval_width_ratio = 0.0125 # ratio to rated power
-MinPoints = 5
-epsilon_ratio = 0.025
+# # 完全复现
+# ws_interval_width = 0.5 #(m/s)
+# pw_interval_width_ratio = 0.0125 # ratio to rated power
+# horizontal_low_tolarance = 1.5
+# horizontal_high_tolarance = 1.5
+# vertical_tolarance = 1.5
+# MinPoints = 5
+# epsilon_ratio = 0.025
+
+# 对每个风机设置不同的参数
+recur_param_df = pd.read_csv("./data/recur_param.csv", index_col="风机编号")
 
 
-########################################
-# 0. Preliminary Elimination
-#   Remove points whose wind power < 0.
-########################################
+#################################################################################
+# Augment dataset for double 
+# 问题描述：有些风机的p-v曲线顶上的那一段水平直线（达到额定功率）数据点太少，会出问题
+# 解决思路：过采样，无中生有一些数据点，增强顶上水平直线中的数据点
+#################################################################################
+# print("Augment dataset for p-v curve fitting...")
+# double_manifold_wind_number = [3, 6, 9, 10]
+# df = raw_df[raw_df["label"]==0]
+# for wind_number, sub_df in df.groupby("WindNumber"):
+#     if wind_number not in double_manifold_wind_number:
+#         continue
+#     pass
+
+
+##################################################################################
+# 0. Preliminary Elimination with simple rules
+#   Remove points whose windspeed, rotorspeed or power < 0.
+#   Remove points whose power > 0 but windspeed not in [切入风速, 切出风速] range.
+##################################################################################
 print("Preliminary Elimination...")
 df = raw_df
 raw_df.loc[df["Power"]<0, "label"] = 1
+raw_df.loc[df["WindSpeed"]<0, "label"] = 1
+raw_df.loc[df["RotorSpeed"]<0, "label"] = 1
+# 下面这些好像不太行，但是符合论文中的物理规则？
+# for wind_number, sub_df in df.groupby("WindNumber"):
+#     print("  Wind Number:", wind_number)
+#     cut_in_windspeed, cut_out_windspeed = param_df.loc["切入风速", wind_number], param_df.loc["切出风速", wind_number]
+#     power_abnormal_condition = (df["Power"] > 0) & ((df["WindSpeed"] < cut_in_windspeed) | (df["WindSpeed"] > cut_out_windspeed))
+#     raw_df.loc[power_abnormal_condition, "label"] = 1
 print(raw_df["label"].value_counts())
 
 
@@ -48,12 +83,20 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         continue
     print("  Wind Number:", wind_number)
     rated_power = param_df.loc["额定功率", wind_number]
+    try:
+        pw_interval_width_ratio = recur_param_df.loc[wind_number, "pw_interval_width_ratio"]
+        horizontal_low_tolarance = recur_param_df.loc[wind_number, "horizontal_low_tolarance"]
+        horizontal_high_tolarance = recur_param_df.loc[wind_number, "horizontal_high_tolarance"]
+    except:
+        pw_interval_width_ratio = 0.0125
+        horizontal_low_tolarance = 1.5
+        horizontal_high_tolarance = 1.5
     pw_interval_width = pw_interval_width_ratio * rated_power
     sub_df.loc[:, "pw_interval"] = sub_df["Power"].apply(lambda x: x // pw_interval_width)
     for pw_interval, interval_df in sub_df.groupby("pw_interval"):
         p1, p3 = interval_df["WindSpeed"].quantile(0.25), interval_df["WindSpeed"].quantile(0.75)
         iqr = p3 - p1
-        fl, fu = p1 - 1.5*iqr, p3 + 1.5*iqr
+        fl, fu = p1 - horizontal_low_tolarance*iqr, p3 + horizontal_high_tolarance*iqr
         bad_interval_index = (interval_df["WindSpeed"] < fl) | (interval_df["WindSpeed"] > fu)
         sparse_outlier_index = interval_df[bad_interval_index].index
         raw_df.loc[sparse_outlier_index, "label"] = 1
@@ -66,18 +109,24 @@ print(raw_df["label"].value_counts())
 #     Divide wind speed values into a number of equal intervals.
 #     The quartile method is applied to the wind power dataset in each wind speed interval. 
 #   Attention: Only the wind power data above Fu are eliminated from the dataset while the data below Fl are not considered.
-#############################################################################################################################
+# #############################################################################################################################
 print("Vertical Eliminating...")
 df = raw_df[raw_df["label"]==0]
 for wind_number, sub_df in df.groupby("WindNumber"):
     if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
         continue
     print("  Wind Number:", wind_number)
+    try:
+        ws_interval_width = recur_param_df.loc[wind_number, "ws_interval_width"]
+        vertical_tolarance = recur_param_df.loc[wind_number, "vertical_tolarance"]
+    except:
+        ws_interval_width = 0.5 # m/s
+        vertical_tolarance = 1.5
     sub_df.loc[:, "ws_interval"] = sub_df["WindSpeed"].apply(lambda x: x // ws_interval_width)
     for ws_interval, interval_df in sub_df.groupby("ws_interval"):
         p1, p3 = interval_df["Power"].quantile(0.25), interval_df["Power"].quantile(0.75)
         iqr = p3 - p1
-        fl, fu = p1 - 1.5*iqr, p3 + 1.5*iqr
+        fl, fu = p1 - 1.5*iqr, p3 + vertical_tolarance*iqr
         bad_interval_index = interval_df["Power"] > fu
         sparse_outlier_index = interval_df[bad_interval_index].index
         raw_df.loc[sparse_outlier_index, "label"] = 1
@@ -99,6 +148,14 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         continue
     print("  Wind Number:", wind_number)
     rated_power = param_df.loc["额定功率", wind_number]
+    try:
+        ws_interval_width = recur_param_df.loc[wind_number, "ws_interval_width"]
+        epsilon_ratio = recur_param_df.loc[wind_number, "epsilon_ratio"]
+        MinPoints = recur_param_df.loc[wind_number, "MinPoints"]
+    except:
+        ws_interval_width = 0.5 # m/s
+        epsilon_ratio = 0.025
+        MinPoints = 5
     epsilon = epsilon_ratio * rated_power
     sub_df.loc[:, "ws_interval"] = sub_df["WindSpeed"].apply(lambda x: x // ws_interval_width)
     for ws_interval, interval_df in sub_df.groupby("ws_interval"):
@@ -132,7 +189,9 @@ print(raw_df["label"].value_counts())
 ################################################
 # Plot the results and save the submission file
 ################################################
-print("Plotting...")
+print("Plotting 3D scatter...")
+raw_df = raw_df.loc[raw_df_index]
+
 # 画三维散点图
 for wind_number, sub_df in raw_df.groupby("WindNumber"):
     if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
@@ -150,9 +209,12 @@ for wind_number, sub_df in raw_df.groupby("WindNumber"):
     plt.savefig("./figures/recur/" + str(wind_number) + "_results_scatter.jpg")
     plt.close()
 # 画维度两两组合的函数关系
+print("Plotting 2D scatter...")
+df = raw_df[raw_df["label"]==0]
 for wind_number, sub_df in df.groupby("WindNumber"):
     if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
         continue
+    print("  Wind Number:", wind_number)
     fig, axs = plt.subplots(1, 3)
     fig.set_size_inches(40, 20)
     fig.suptitle("WindNumber: " + str(wind_number))
