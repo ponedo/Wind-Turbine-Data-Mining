@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import random
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from mpl_toolkits.mplot3d import Axes3D
@@ -35,17 +36,42 @@ recur_param_df = pd.read_csv("./data/recur_param.csv", index_col="风机编号")
 
 
 #################################################################################
-# Augment dataset for double 
+# Augment dataset for double manifold
 # 问题描述：有些风机的p-v曲线顶上的那一段水平直线（达到额定功率）数据点太少，会出问题
 # 解决思路：过采样，无中生有一些数据点，增强顶上水平直线中的数据点
 #################################################################################
-# print("Augment dataset for p-v curve fitting...")
-# double_manifold_wind_number = [3, 6, 9, 10]
-# df = raw_df[raw_df["label"]==0]
-# for wind_number, sub_df in df.groupby("WindNumber"):
-#     if wind_number not in double_manifold_wind_number:
-#         continue
-#     pass
+def pointGeneration(src_df):
+    # 功率上随机扰动
+    sigma = src_df['Power'].std()
+    src_df['Power'] = src_df['Power'].apply(lambda x: x + random.gauss(0, sigma*0.2))
+    # 风速上“延长长度”
+    src_df['WindSpeed'] = src_df['WindSpeed'].apply(lambda x: x + random.random()*8)
+    # 转速上随机扰动
+    sigma = src_df['RotorSpeed'].std()
+    src_df['RotorSpeed'] = src_df['RotorSpeed'].apply(lambda x: x + random.gauss(0, sigma*0.2))
+    return src_df
+
+print("Augment dataset for p-v curve fitting...")
+df = raw_df[raw_df["label"]==0]
+ready_winds = [11]
+for wind_number, sub_df in df.groupby("WindNumber"):
+    if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
+        continue
+    rated_power = param_df.loc["额定功率", wind_number]
+    top_power_rate = recur_param_df.loc[wind_number, "top_power_rate"]
+    samples = sub_df[sub_df['Power'] > rated_power * top_power_rate]
+    if(wind_number not in ready_winds):
+        print("  WindNumber:", wind_number)
+        TIMES = ((1-top_power_rate)*len(sub_df) + 0.5) // len(sub_df[sub_df['Power'] > rated_power * top_power_rate]) + 1
+        for i in range(round(TIMES.astype(int))):
+            # 随机生成
+            raw_df = raw_df.append(pointGeneration(samples.copy()), ignore_index=True)
+            # # 直接复制
+            # raw_df = raw_df.append(samples, ignore_index=True)
+print("  raw_df size::")
+print(raw_df.loc[raw_df_index, "label"].value_counts())
+print("  oversampled_df size:")
+print(raw_df["label"].value_counts())
 
 
 ##################################################################################
@@ -64,7 +90,7 @@ raw_df.loc[df["RotorSpeed"]<0, "label"] = 1
 #     cut_in_windspeed, cut_out_windspeed = param_df.loc["切入风速", wind_number], param_df.loc["切出风速", wind_number]
 #     power_abnormal_condition = (df["Power"] > 0) & ((df["WindSpeed"] < cut_in_windspeed) | (df["WindSpeed"] > cut_out_windspeed))
 #     raw_df.loc[power_abnormal_condition, "label"] = 1
-print(raw_df["label"].value_counts())
+print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
 #######################################################################################
@@ -100,7 +126,7 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         bad_interval_index = (interval_df["WindSpeed"] < fl) | (interval_df["WindSpeed"] > fu)
         sparse_outlier_index = interval_df[bad_interval_index].index
         raw_df.loc[sparse_outlier_index, "label"] = 1
-print(raw_df["label"].value_counts())
+print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
 #############################################################################################################################
@@ -130,7 +156,7 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         bad_interval_index = interval_df["Power"] > fu
         sparse_outlier_index = interval_df[bad_interval_index].index
         raw_df.loc[sparse_outlier_index, "label"] = 1
-print(raw_df["label"].value_counts())
+print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
 ####################################################################################################################
@@ -142,7 +168,6 @@ print(raw_df["label"].value_counts())
 ####################################################################################################################
 print("DBSCAN...")
 df = raw_df[raw_df["label"]==0]
-print(df["label"].value_counts())
 for wind_number, sub_df in df.groupby("WindNumber"):
     if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
         continue
@@ -183,7 +208,33 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         # print("      Good cluster power mean value:", max_power)
         # print("      Bad cluster index", bad_cluster_index)
         # print("      Stacked outlier index", stacked_outlier_index)
-print(raw_df["label"].value_counts())
+print(raw_df.loc[raw_df_index, "label"].value_counts())
+
+
+####################################################################################################################
+# 4. 针对3号风机和6号风机的修改
+#   For each wind turbine:
+#     Divide wind speed values into a number of equal intervals.
+#     The DBSCAN clustering method is applied to the wind power dataset in each wind speed interval.
+#     The topmost cluster with largest average power value is the normal data, while other clusters are eliminated.
+####################################################################################################################
+print("Specialize for each wind turbine...")
+raw_df["diff"] = 0
+df = raw_df.loc[raw_df_index]
+df = df[df["label"]==0]
+for wind_number, sub_df in df.groupby("WindNumber"):
+    if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
+        continue
+    if not (wind_number == 3 or wind_number == 6):
+        continue
+    x, y = sub_df["WindSpeed"], sub_df["Power"]
+    y_fit = np.polyfit(x, y, 2)  # 二次多项式拟合
+    y_show = np.poly1d(y_fit)
+    print(y_show)
+    sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 0.5) ** 2) + y_show.coef[1] * (sub_df["WindSpeed"] - 0.5) + y_show.coef[2])
+    outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 0) & (sub_df["WindSpeed"] <= 10)].index
+    raw_df.loc[outlier_manifold_index, "label"] = 1
+print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
 ################################################
