@@ -7,7 +7,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 DEBUG = False
-DEBUG_WIND_NUMBER = 6
+DEBUG_WIND_NUMBER = 9
 
 
 ###################
@@ -65,9 +65,11 @@ for wind_number, sub_df in df.groupby("WindNumber"):
         TIMES = ((1-top_power_rate)*len(sub_df) + 0.5) // len(sub_df[sub_df['Power'] > rated_power * top_power_rate]) + 1
         for i in range(round(TIMES.astype(int))):
             # 随机生成
-            raw_df = raw_df.append(pointGeneration(samples.copy()), ignore_index=True)
-            # # 直接复制
-            # raw_df = raw_df.append(samples, ignore_index=True)
+            if wind_number == 6 or wind_number == 9:
+                raw_df = raw_df.append(pointGeneration(samples.copy()), ignore_index=True)
+            # 直接复制
+            else:
+                raw_df = raw_df.append(samples, ignore_index=True)
 print("  raw_df size::")
 print(raw_df.loc[raw_df_index, "label"].value_counts())
 print("  oversampled_df size:")
@@ -184,6 +186,12 @@ for wind_number, sub_df in df.groupby("WindNumber"):
     epsilon = epsilon_ratio * rated_power
     sub_df.loc[:, "ws_interval"] = sub_df["WindSpeed"].apply(lambda x: x // ws_interval_width)
     for ws_interval, interval_df in sub_df.groupby("ws_interval"):
+        # # Add rule: ws_intervals with smaller avg_power will have smaller epsilon
+        # epsilon = epsilon_ratio * rated_power
+        # avg_power = interval_df["Power"].mean()
+        # if avg_power < 1500:
+        #     # epsilon = epsilon / 1.5
+        #     MinPoints = round(MinPoints * 0.6)
         X = interval_df["Power"].values.reshape(-1, 1)
         y_pred = DBSCAN(eps=epsilon, min_samples=MinPoints).fit_predict(X)
         cluster_labels = np.unique(y_pred)
@@ -212,28 +220,89 @@ print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
 ####################################################################################################################
-# 4. 针对3号风机和6号风机的修改
+# 4. Specialized processing for each wind turbine...
 #   For each wind turbine:
 #     Divide wind speed values into a number of equal intervals.
 #     The DBSCAN clustering method is applied to the wind power dataset in each wind speed interval.
 #     The topmost cluster with largest average power value is the normal data, while other clusters are eliminated.
 ####################################################################################################################
 print("Specialize for each wind turbine...")
+print("Slice wrong manifold from 3 and 6 turbine...")
 raw_df["diff"] = 0
 df = raw_df.loc[raw_df_index]
 df = df[df["label"]==0]
 for wind_number, sub_df in df.groupby("WindNumber"):
     if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
         continue
-    if not (wind_number == 3 or wind_number == 6):
-        continue
-    x, y = sub_df["WindSpeed"], sub_df["Power"]
-    y_fit = np.polyfit(x, y, 2)  # 二次多项式拟合
-    y_show = np.poly1d(y_fit)
-    print(y_show)
-    sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 0.5) ** 2) + y_show.coef[1] * (sub_df["WindSpeed"] - 0.5) + y_show.coef[2])
-    outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 0) & (sub_df["WindSpeed"] <= 10)].index
-    raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### wind_number == 3
+    if wind_number == 3:
+        x, y = sub_df["WindSpeed"], sub_df["Power"]
+        y_fit = np.polyfit(x, y, 2)  # 二次多项式拟合
+        y_show = np.poly1d(y_fit)
+        sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 0.5) ** 2) + y_show.coef[1] * (sub_df["WindSpeed"] - 0.5) + y_show.coef[2])
+        outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 0) & (sub_df["WindSpeed"] <= 10)].index
+        raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### wind_number == 6
+    # if wind_number == 6:
+    #     # used_to_fit_index = (sub_df["WindSpeed"] < 12) & (sub_df["Power"] > 800) & (sub_df["Power"] > 1200)
+    #     # x, y = sub_df[used_to_fit_index]["WindSpeed"], sub_df[used_to_fit_index]["Power"]
+    #     x, y = sub_df["WindSpeed"], sub_df["Power"]
+    #     y_fit = np.polyfit(x, y, 2)  # 二次多项式拟合
+    #     y_show = np.poly1d(y_fit)
+    #     sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] + 0.3) ** 2) + y_show.coef[1] * (sub_df["WindSpeed"] + 0.3) + y_show.coef[2] - 20)
+    #     outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 0) & (sub_df["WindSpeed"] <= 10)].index
+    #     raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### chenkai version
+    if wind_number == 6:
+        # p0 = np.poly1d([1.588, -120])
+        # p1 = np.poly1d([0.345, -120])
+        outlier_index = sub_df[(sub_df["Power"] > 150) & (sub_df["RotorSpeed"]**3 > (sub_df["Power"]+120)/0.345 )].index
+        raw_df.loc[outlier_index, "label"] = 1
+        outlier_index = sub_df[(sub_df["Power"] < 250) & (sub_df["WindSpeed"]**3 > (sub_df["Power"]+65)/1.588 )].index
+        raw_df.loc[outlier_index, "label"] = 1
+    ### wind_number == 7
+    if wind_number == 7:   # 去掉过采样
+        x, y = sub_df["WindSpeed"], sub_df["Power"]
+        y_fit = np.polyfit(x, y, 2)
+        y_show = np.poly1d(y_fit)
+        print(y_show)
+        sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 1.5) ** 2) + y_show.coef[1] * (sub_df["WindSpeed"] - 1.5) + y_show.coef[2])
+        outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 5) & (sub_df["WindSpeed"] <= 10)].index
+        raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### wind_number == 8
+    if wind_number == 8:
+        x, y = sub_df["WindSpeed"], sub_df["Power"]
+        y_fit = np.polyfit(x, y, 3)
+        y_show = np.poly1d(y_fit)
+        print(y_show)
+        sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 0.5) ** 3) + y_show.coef[1] * ((sub_df["WindSpeed"] - 0.5) ** 2) + y_show.coef[2] * (sub_df["WindSpeed"] - 0.5) + y_show.coef[3])
+        outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 11) & (sub_df["WindSpeed"] <= 13)].index
+        raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### wind_number == 9
+    if wind_number == 9:
+        x, y = sub_df["WindSpeed"], sub_df["Power"]
+        y_fit = np.polyfit(x, y, 3)
+        y_show = np.poly1d(y_fit)
+        print(y_show)
+        sub_df['diff'] = sub_df['Power'] - (y_show.coef[0] * ((sub_df["WindSpeed"] - 1) ** 3) + y_show.coef[1] * ((sub_df["WindSpeed"] - 1) ** 2) + y_show.coef[2] * (sub_df["WindSpeed"] - 1) + y_show.coef[3])
+        outlier_manifold_index = sub_df[(sub_df["diff"] < 0) & (sub_df["WindSpeed"] > 6) & (sub_df["WindSpeed"] <= 12)].index
+        raw_df.loc[outlier_manifold_index, "label"] = 1
+    ### wind_number == 10
+    if wind_number == 10:
+        x, y = sub_df["WindSpeed"], sub_df["RotorSpeed"]
+        y_fit = np.polyfit(x, y, 2)  # 二次多项式拟合
+        y_show = np.poly1d(y_fit)
+        # print(y_show)
+        # x_plot = np.arange(2.5, 10, 0.01)
+        # y_plot = y_show.coef[0] * (
+        #     (x_plot + 0.8)**2) + y_show.coef[1] * (x_plot + 0.8) + y_show.coef[2]
+        sub_df['diff'] = sub_df['RotorSpeed'] - (
+            y_show.coef[0] * ((sub_df["WindSpeed"] + 0.8)**2) + y_show.coef[1] *
+            (sub_df["WindSpeed"] + 0.8) + y_show.coef[2])
+        outlier_manifold_index = sub_df[(sub_df["diff"] > 0)
+                                        & (sub_df["WindSpeed"] > 0) &
+                                        (sub_df["WindSpeed"] <= 5)].index
+        raw_df.loc[outlier_manifold_index, "label"] = 1
 print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
