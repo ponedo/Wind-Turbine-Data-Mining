@@ -96,6 +96,8 @@ raw_df.loc[df["RotorSpeed"]<0, "label"] = 1
 #     raw_df.loc[power_abnormal_condition, "label"] = 1
 # 对每个风机的特别预处理
 for wind_number, sub_df in df.groupby("WindNumber"):
+    if DEBUG and not wind_number == DEBUG_WIND_NUMBER:
+        continue
     if wind_number == 12:
         # delete points above the line1: (5.6, 1000) -> (8.2, 1900)
         outlier_condition11 = sub_df["Power"] > ( (900/2.6) * (sub_df["WindSpeed"] - 5.6) + 1000)
