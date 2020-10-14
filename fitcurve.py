@@ -7,7 +7,7 @@ from sklearn.cluster import DBSCAN
 from mpl_toolkits.mplot3d import Axes3D
 
 
-DEBUG = True
+DEBUG = False
 DEBUG_WIND_NUMBER = 3
 
 
