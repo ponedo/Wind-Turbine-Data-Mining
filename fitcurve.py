@@ -282,5 +282,5 @@ for wind_number, sub_df in df.groupby("WindNumber"):
     plt.close()
 
 if not DEBUG:
-    submission_df = raw_df[["WindNumber", "Time", "label"]]
+    submission_df = raw_df[["WindNumber", "Time", "label", "selected"]]
     submission_df.to_csv("./results/result.csv", index=False)
