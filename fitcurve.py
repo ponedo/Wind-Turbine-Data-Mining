@@ -7,8 +7,8 @@ from sklearn.cluster import DBSCAN
 from mpl_toolkits.mplot3d import Axes3D
 
 
-DEBUG = False
-DEBUG_WIND_NUMBER = 1
+DEBUG = True
+DEBUG_WIND_NUMBER = 3
 
 
 ###################
@@ -136,10 +136,11 @@ for wind_number, sub_df in df.groupby("WindNumber"):
     print("  Wind Number:", wind_number)
     timestamp = sub_df["Time"].apply(lambda x: int(time.mktime(time.strptime(x, "%Y/%m/%d %H:%M"))))
 
-    # if wind_number == 1:
-    #     selected_condition = sub_df["ts"] > 1.538 * 10**9
-    #     selected_index = sub_df[selected_condition].index
-    #     raw_df.loc[selected_index, "selected"] = 1
+    if wind_number == 3:
+        selected_condition = (sub_df["ts"] > 1.528 * 10**9) & (sub_df["ts"] < 1.535 * 10**9)
+        selected_index = sub_df[selected_condition].index
+        raw_df.loc[selected_index, "selected"] = 1
+        continue
 
     threshold = sub_df["ts"].quantile(0.90)
     selected_condition = sub_df["ts"] > threshold
