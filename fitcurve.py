@@ -150,8 +150,53 @@ for wind_number, sub_df in df.groupby("WindNumber"):
 print(raw_df.loc[raw_df_index, "label"].value_counts())
 
 
+###########
+# 5. Fit poly curves
+################
+print("Fitting curves...")
+curves = []
+df = raw_df[raw_df["selected"]==1]
+for wind_number, sub_df in df.groupby("WindNumber"):
+       
+    print("  Wind Number:", wind_number)
+    fig, axs = plt.subplots(1, 3)
+    fig.set_size_inches(40, 20)
+    fig.suptitle("WindNumber: " + str(wind_number))
+    axs[0].set_title("W&P")
+    axs[0].set_xlabel("WindSpeed")
+    axs[0].set_ylabel("Power")
+    axs[0].grid()
+    
+    if(wind_number == 11 or wind_number == 12):
+        z0 = np.polyfit(sub_df["WindSpeed"], sub_df["Power"],9)
+    else:
+        z0 = np.polyfit(sub_df["WindSpeed"], sub_df["Power"],5)
+    p0 = np.poly1d(z0)
+    curves.append(p0)
+    ax0 = axs[0].scatter(sub_df["WindSpeed"], sub_df["Power"])
+
+    x = np.linspace(2,14, 50)
+    y =p0(x)
+    axs[0].plot(x,y,color='red')
+
+
+#####################################
+# 6. Eliminate according to curves
+#####################################
+df = raw_df[raw_df['label'] == 0]
+for wind_number, sub_df in df.groupby("WindNumber"):
+    
+    print("  Wind Number:", wind_number)
+    # delete points below the line1: (10.7, 1500) -> (12.3, 2000)
+    outlier_condition11 = sub_df["Power"] < curves[wind_number-1](sub_df["WindSpeed"] - delta)
+    outlier_condition12 = sub_df["Power"] > curves[wind_number-1](sub_df["WindSpeed"] + delta)
+    outlier_condition1 = (outlier_condition11 | outlier_condition12)
+    outlier_index = sub_df[outlier_condition1].index    
+    raw_df.loc[outlier_index, "label"] = 1
+
+
 ####################################################################################################################
-# 4. Specialized processing for each wind turbine...
+# 7. Specialized processing for each wind turbine...
 #   For each wind turbine:
 #     Divide wind speed values into a number of equal intervals.
 #     The DBSCAN clustering method is applied to the wind power dataset in each wind speed interval.
