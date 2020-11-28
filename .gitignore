@@ -1,2 +1,10 @@
 data/dataset.csv
 submission.csv
+
+/figures/*
+!/figures/recur
+
+/models/*
+
+/results/*.csv
+!/results/101*.csv
